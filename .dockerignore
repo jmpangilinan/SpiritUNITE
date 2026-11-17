@@ -1,0 +1,11 @@
+.git
+**/bin
+**/obj
+resources
+gallery
+logs
+apk-build
+ipa-build
+.env
+*.env
+src/SpiritUnite.Core/appsettings.json

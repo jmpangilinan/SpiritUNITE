@@ -1,0 +1,58 @@
+name: spiritunite
+
+services:
+  db:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+      MARIADB_USER: spiritunite
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./sql/spiritunite.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docker/02-grant.sql:/docker-entrypoint-initdb.d/02-grant.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  server:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TcpServer__BindAddress: 0.0.0.0
+      HttpServer__BindAddress: 0.0.0.0
+      LobbyServer__Host: ${LOBBY_HOST:-127.0.0.1}
+      ResourceArchive__Directory: /app/resources
+      Database__ConnectionString: Server=db;Port=3306;Database=spiritunite;User ID=spiritunite;Password=${DB_PASSWORD}
+    volumes:
+      - ${RESOURCES_DIR:-./resources}:/app/resources
+      - logs:/app/logs
+    ports:
+      - "${BIND_IP:-127.0.0.1}:8085:8085"         # update server
+      - "${BIND_IP:-127.0.0.1}:8700:8700/udp"     # voice chat
+      - "${BIND_IP:-127.0.0.1}:10001:10001"       # directory server
+      - "${BIND_IP:-127.0.0.1}:10002:10002"       # lobby server
+      - "${BIND_IP:-127.0.0.1}:10003:10003/udp"   # relay server
+      - "${BIND_IP:-127.0.0.1}:10081:10081"       # login/registration/admin + resource download
+
+volumes:
+  db_data:
+  logs:
+
+networks:
+  default:
+    # Pinned: Docker's auto pools can spill into 192.168.x and shadow a real LAN.
+    ipam:
+      config:
+        - subnet: 10.217.3.0/24
